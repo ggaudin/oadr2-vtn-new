@@ -138,7 +138,7 @@ public class EiEventService {
             if ( eventResponseCode != "200" ) {
                 // TODO if we get a non-200 response, do we process the opt??
                 log.warn "++++ Not processing non-200 event response!"
-                return
+                return [response, description] /* GGA : always return response */
             }
             def venTxLog = VenTransactionLog.findWhere(requestID: evtResponse.requestID)
             if ( venTxLog ) {
@@ -154,13 +154,23 @@ public class EiEventService {
                 return ["404", "Event $eventId not found"]
             }
 
-            def venStatus = VenStatus.where{ ven.venID == venID; event == event }.find()
+            /* +GGA : avoid multiple entry found */
+            // TODO : what to do when multiple case found
+            /* it appends that one PENDING_DISTRIBUTE event also found after new we add one new event at VTN side */
+            //def venStatus = VenStatus.where{ ven.venID == venID; event == event }.find()
+            def venStatus = VenStatus.where{ ven.venID == venID && optStatus == StatusCode.DISTRIBUTE_SENT; event == event }.find()
+            /* -GGA */
 
             if ( ! venStatus ) {
                 log.warn "VEN status not found!" 
                 return ["409", "Invalid VEN ID"]
             }
-            
+            /* +GGA : only for debug */
+            else {
+                log.debug "VEN status :\n$venStatus"
+            }
+            /* -GGA */
+
             switch (optType) {
                 case("optIn") :
                     venStatus.optStatus = StatusCode.OPT_IN
@@ -170,18 +180,22 @@ public class EiEventService {
                     break
                 default :
                     log.error "Invalid opt Type! $optType"
-                    return [409,"Invalid opt type!"]
+                    return ["409","Invalid opt type!"] /* GGA : set code as String */
             }
             venStatus.time = new Date()
             venStatus.save()
+            /* +GGA : return result != null for test */
+            return [response, description] /* always return response code */
+            /* -GGA */
         }
         
         errors.findAll() // filter out null
-        
-        if ( errors ) {
-            (response,description) = errors[0]
+        /* +GGA : change test to match with error result */
+        (response,description) = errors[0]
+        if ( response != "200" ) {
             log.warn "Returning error response: $response, $description"
         }
+        /* -GGA */
         return [response,description]
     }
 
@@ -200,10 +214,13 @@ public class EiEventService {
             UUID.randomUUID().toString()
             
         OadrDistributeEvent oadrDistributeEvent = new OadrDistributeEvent()
-            .withEiResponse(eiResponse)
-            .withRequestID(UUID.randomUUID().toString())
-            .withVtnID(this.vtnID)
-
+                .withEiResponse(eiResponse)
+                // TODO : verify this point according to OADR definition (GGA)
+                /* +GGA : same requestID used to avoid error at oadrCreatedEvent requestID check */
+                //.withRequestID(UUID.randomUUID().toString())
+                .withRequestID(eiResponse.requestID)
+                /* -GGA */
+                .withVtnID(this.vtnID)
         def ven = Ven.findWhere( venID: oadrRequestEvent.eiRequestEvent.venID )
         if ( ! ven ) {
             log.warn "Unknown VEN ID! ${oadrRequestEvent.eiRequestEvent.venID}"
@@ -232,7 +249,12 @@ public class EiEventService {
         venLog.type = "pull_request"
         venLog.requestID = eiResponse.requestID
         log.debug "Request ID: ${eiResponse.requestID}"
-        if ( venLog.validate() )
+        // TODO : verify this point
+        /* +GGA : validate => error when request and error not set */
+        venLog.setRequest("no payload") // raw payload needed ?
+        venLog.setError("no error")
+        /* -GGA */
+        if ( venLog.validate() ) /* GGA : validate can't work as no request and error has been defined */
             venLog.save()
         else log.warn "Couldn't validate VEN TXN!"
         

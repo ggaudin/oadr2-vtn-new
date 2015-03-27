@@ -22,7 +22,10 @@ class EventSignal {
     
     public EventInterval getCurrentInterval() {
         Date now = new Date()
-        
+        /* + GGA : avoid display side effect of last log.warn */
+        boolean intervalValidated = false;
+        /* - GGA */
+
         // TODO not sure if this is correct:
         if ( event.cancelled || now > event.endDate )
             return null
@@ -34,10 +37,20 @@ class EventSignal {
         def intervalEnd = event.startDate.time
         this.intervals.each { interval ->
             intervalEnd += interval.durationMillis
-            if ( intervalEnd > now.time ) // we're in this interval
+            if ( intervalEnd > now.time ) { // we're in this interval
+                /* +GGA : display interval and manage display side effect */
+                log.debug "Interval validated : $interval.level"
+                intervalValidated = true;
                 return interval.level
+                /* -GGA */
+            }
         }
-        log.warn "Couldn't find an interval for event $event"
+
+        /* +GGA : seems that we have display side effect when we only have log.warn at function end => message seen even if interval found */
+        if (!intervalValidated) {
+            log.warn "Couldn't find an interval for event $event"
+        }
+        /* -GGA */
         return null
     }
     
